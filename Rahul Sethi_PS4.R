@@ -208,8 +208,9 @@ murder1 <- pdata.frame(murder1, index = c("id","year"))
 # Pooled OLS model
 summary(plm(mrdrte ~ exec + unem + state, data=murder1, model="pooling"))
 # Fixed Effects model with first-differencing
-summary(plm(cmrdrte ~ cexec + cunem, data=murder1, model="within", effect = "twoway"))
-summary(plm(cmrdrte ~ cexec + cunem, data=murder1, model="within", effect = "twoway"),method="white")
+
+summary(plm(mrdrte ~ exec + unem, data=murder1, model="fd"))
+summary(plm(mrdrte ~ exec + unem, data=murder1, model="within",effects="individual"))
 
 subset(murder[order(-murder$exec),], year==93)[c(1,2),c("state","exec")]
 
