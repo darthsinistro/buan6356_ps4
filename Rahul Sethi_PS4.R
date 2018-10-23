@@ -209,9 +209,11 @@ murder1 <- pdata.frame(murder1, index = c("id","year"))
 summary(plm(mrdrte ~ exec + unem + state, data=murder1, model="pooling"))
 # Fixed Effects model with first-differencing
 
-summary(plm(mrdrte ~ exec + unem, data=murder1, model="fd"))
-summary(plm(mrdrte ~ exec + unem, data=murder1, model="within",effects="individual"))
+summary(plm(cmrdrte ~ cexec + cunem, data=murder1, model="within"))
 
+summary(plm(mrdrte ~ exec + unem, data=murder1, model="fd"))
+fixef(plm(mrdrte ~ exec + unem, data=murder1, model="within",effects="twoways"),effect="time")
+?fixef
 subset(murder[order(-murder$exec),], year==93)[c(1,2),c("state","exec")]
 
 summary(plm(cmrdrte ~ cexec + cunem, data=subset(murder1, state!="TX"), model="within", effect = "twoway"))
