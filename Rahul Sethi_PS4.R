@@ -9,6 +9,9 @@ library(RSQLite)
 library(tidyverse)
 library(grid)
 library(plm)
+library(margins)
+library(Greg)
+library(data.table)
 
 # Question 4.1
 
@@ -184,17 +187,17 @@ summary(plm(log(rent) ~ y90 + log(pop) + log(avginc) + pctstu, model="within", e
 
 # 4.5.i: I would expect Beta1 to be negative. Historically, that is the argument that has been used for the death penalty - that executions in heinous crimes deter potential offendors. For Beta2, I would expect a positive sign. High unemployment usually leads to higher crime-rates.
 
-# 4.5.ii: In the pooled model, there is some evidence for a detrimental effect. Although the coefficient is barely significant at 5% level, it is significant and negative.
+# 4.5.ii: In the pooled model, there is some evidence for a detrimental effect.
 
-# 4.5.iii: Now the dettering effect is not significant. It is still negative in magniture, but it is not at all significant at 5% or even 10% level.
+# 4.5.iii: It is still negative in magniture and barely significant at a 5% level.
 
-# 4.5.iv: Done
+# 4.5.iv: Done. Estimates don't change.
 
 # 4.5.v: The highest in for Texas at 34 and the second place is for Virginia at 11.
 
-# 4.5.vi: Although the sign of the dettriment is negative, it is still insignificant and it's magnitude has reduced.
+# 4.5.vi: Although negative, the detrimental effect ceases to be significant at a 5% level - both with and without Hetroskedasticity correction.
 
-# 4.5.vii: This time, the effect is greater in magnitude, still negative but still statistically insignificant.
+# 4.5.vii: With HC correction, the cofficient is not significant at a 5% level.
 
 
 con <- dbConnect(SQLite(), "wooldridge.db")
@@ -202,24 +205,102 @@ murder <- dbReadTable(con,"MURDER")
 dbReadTable(con,"MURDER_labels")
 dbDisconnect(con)
 
+murder <- pdata.frame(murder, index = c("id","year"))
+
 murder1 <- subset(murder, year %in% c(90,93))
-murder1 <- pdata.frame(murder1, index = c("id","year"))
 
 # Pooled OLS model
-summary(plm(mrdrte ~ exec + unem + state, data=murder1, model="pooling"))
+summary(plm(mrdrte ~ exec + unem + state + as.factor(year), data=murder1, model="pooling"))
+
 # Fixed Effects model with first-differencing
-
-summary(plm(cmrdrte ~ cexec + cunem, data=murder1, model="within"))
-
+#summary(plm(cmrdrte ~ cexec + cunem, data=murder1, model="within"))
 summary(plm(mrdrte ~ exec + unem, data=murder1, model="fd"))
-fixef(plm(mrdrte ~ exec + unem, data=murder1, model="within",effects="twoways"),effect="time")
-?fixef
+summary(plm(mrdrte ~ exec + unem, data=murder1, model="within",effects="twoways"))
+
+summary(plm(mrdrte ~ exec + unem, data=murder1, model="within",effects="twoways"),vcovHC)
+
 subset(murder[order(-murder$exec),], year==93)[c(1,2),c("state","exec")]
 
-summary(plm(cmrdrte ~ cexec + cunem, data=subset(murder1, state!="TX"), model="within", effect = "twoway"))
-summary(plm(cmrdrte ~ cexec + cunem, data=subset(murder1, state!="TX"), model="within", effect = "twoway"),method="white")
+#Removing Texas and performing analysis
 
-murder <- pdata.frame(murder, index = c("id","year"))
-summary(plm(mrdrte ~ exec + unem, data=murder, model="within", effect = "twoway"))
-summary(plm(mrdrte ~ exec + unem, data=murder, model="within", effect = "twoway"),method="white")
+murder2 <- subset(murder1,state != "TX")
+
+summary(plm(mrdrte ~ exec + unem, data=murder2, model="fd"))
+summary(plm(mrdrte ~ exec + unem, data=murder2, model="fd"),vcovHC)
+
+#Using all the data
+summary(plm(mrdrte ~ exec + unem, data=murder, model="within", effect = "twoways"))
+summary(plm(mrdrte ~ exec + unem, data=murder, model="within", effect = "twoways"), vcovHC)
+
+
+# Question 4.6
+
+# 4.6.i: The estimated increase in fare would be 3.6%
+
+# 4.6.ii: The interval estimate from the OLS model is [0.3011849,0.4190557]. After HC correction, the new interval is [0.2454754,0.4747652].
+
+# 4.6.iii: The values should start becoming positive at dist = 79.50877, a value which is smaller than the smallest value of dist in the data. Effectively, for all values of dist in the data-set, log(fare) should increase, controling for all other factors.
+
+# 4.6.iv: The new estimate is 0.103051.
+
+# 4.6.v: One would be the geography of the route (eg: South only, South-East, etc) and the other is vicinity to tourist attractions (eg: DFW to LAX is a route if I want to go to Disneyworld). Yes these might be correlated with concen as only some airlines serve specific routes.
+
+# 4.6.vi: From economic theory, I should think increase in concen would increase fare on a route because of monopoly. If a single airline captures a route, they would want to increase fares because competition is no longer a threat. I would place my estimate at that of the last model i.e. 0.103051.
+
+
+con <- dbConnect(SQLite(), "wooldridge.db")
+airfare <- dbReadTable(con,"AIRFARE")
+dbReadTable(con,"AIRFARE_labels")
+dbDisconnect(con)
+
+airfare <- pdata.frame(airfare, index=c("id","year"))
+
+summary(plm(lfare ~ as.factor(year) + concen + ldist + I(ldist^2), data = airfare, model="pooling"))
+summary(plm(lfare ~ as.factor(year) + concen + ldist + I(ldist^2), data = airfare, model="pooling"),vcovHC)
+
+c(0.3601203-1.96*0.0300691 ,0.3601203+1.96*0.0300691)
+c(0.3601203 - 1.96*0.0584923, 0.3601203 + 1.96*0.0584923)
+
+exp(-(-0.9016002)/(2*0.1030196))
+summary(airfare)
+
+# Just testing my claim about monotonic increase
+airmodel <- plm(lfare ~ as.factor(year) + id + concen + ldist + I(ldist^2), data = airfare, model="pooling")
+testair <- data.table(year=airfare$year,concen = mean(airfare$concen),ldist = airfare$ldist)
+testair$predictions <- predict(airmodel,testair)
+ggplot(testair, aes(x=ldist, y=predictions)) + geom_path(aes(color=year))
+rm(airmodel)
+rm(testair)
+
+
+# Fixed Effects model
+summary(plm(lfare ~ concen + ldist + I(ldist^2), data = airfare, model="within", effects="twoways"))
+
+
+# Question 4.7
+
+# 4.7.i: The calculated percentages for both logit and linear models are 0.7077922 0.9083879 for non-white and white people respectively. This looks like a significant difference, however, I cannot say there is discrimination by looking only at the race.
+
+# 4.7.ii: Even now, all things considered, the respective probabilities are 0.8280339 0.9248066. This would point towards discrimination. Also, the variable white is significant in the model summary.
+
+con <- dbConnect(SQLite(), "wooldridge.db")
+loan <- dbReadTable(con,"LOANAPP")
+dbReadTable(con,"LOANAPP_labels")
+dbDisconnect(con)
+
+logapp <- glm(approve ~ white, data=loan, family = "binomial")
+linapp <- lm(approve ~ white, data=loan)
+predict(logapp, data.frame(white=c(0,1)),type="response")
+predict(linapp, data.frame(white=c(0,1)))
+
+logapp2 <- glm(approve ~ white + hrat + obrat + loanprc + unem + male + married + dep + sch + cosign + chist + pubrec + mortlat1 + mortlat2 + vr,data=loan, family = "binomial")
+
+a<- data.frame(white=c(0,1),hrat=mean(loan$hrat), obrat=mean(loan$obrat), loanprc=mean(loan$loanprc), unem=mean(loan$unem), male=mean(loan$male, na.rm = TRUE), married=mean(loan$married, na.rm = TRUE), dep=mean(loan$dep, na.rm = TRUE), sch=mean(loan$sch), cosign=mean(loan$cosign), chist=mean(loan$chist), pubrec=mean(loan$pubrec), mortlat1=mean(loan$mortlat1), mortlat2=mean(loan$mortlat2), vr=mean(loan$vr))
+
+predict(logapp2, a, type="response")
+
+summary(logapp2)
+
+
+# Question 4.8
 
